@@ -40,11 +40,11 @@ inline void increase(int &aByte, int aAmount, int aMax = 1023)
 }
 
 void baselineAdjust(int stopPos, int *rChannel, int *lChannel) { // Use Welford's algorithm
-  for (int i = 0; i < stopPos; i++) { // 100 represents a 100-point moving average, taking one sample every 7*(30us) or so, every 210us or 4761Hz.
-    readMSGEQ7();                 // read the spectrum 100 times
-    for (band = 0; band < 7; band++) {  //and for each readout add the l/rChannel values up
-      lChannel[band] += ((left[band] - lChannel[band])/i);
-      rChannel[band] += ((right[band] - rChannel[band])/i);
+  for (int i = 0; i < stopPos; i++) { 
+    readMSGEQ7();                     // read the spectrum 100 times
+    for (band = 0; band < 7; band++) {  
+      lChannel[band] += ((left[band] - lChannel[band])/i);   // compute running average
+      rChannel[band] += ((right[band] - rChannel[band])/i);  // compute running average
     }
   }
 }  
