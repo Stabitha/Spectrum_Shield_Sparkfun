@@ -8,21 +8,46 @@
 // The fourteen values are seperated by commas and are terminated by a newline,
 // which is the format expected by the accompanying processing code.
 
+// Added 'band'-specific baseline correction based on 100 sample burst when program first runs
+
 // MSGEQ7 Control
 int strobe = 4; // strobe pins on digital 4
 int res = 5; // reset pins on digital 5
+static const byte smoothP = 100;  // Number of samples to compute rolling average over
 
 int left[7]; // store band values in these arrays
 int right[7];
+int baselineR[7] = { 0, 0, 0, 0, 0, 0, 0}; //initialize baseline corrections to be zero
+int baselineL[7] = { 0, 0, 0, 0, 0, 0, 0};
 int band;
 
-void setup() {
-  Serial.begin(115200);
-  pinMode(res, OUTPUT); // reset
-  pinMode(strobe, OUTPUT); // strobe
-  digitalWrite(res,LOW); // reset low
-  digitalWrite(strobe,HIGH); //pin 5 is RESET on the shield
+inline void reduce(int &aByte, int aAmount, int aMin = 0)
+{
+  int r = aByte-aAmount;
+  if (r<aMin)
+    aByte = aMin;
+  else
+    aByte = (byte)r;
 }
+
+inline void increase(int &aByte, int aAmount, int aMax = 1023)
+{
+  int r = aByte+aAmount;
+  if (r>aMax)
+    aByte = aMax;
+  else
+    aByte = (byte)r;
+}
+
+void baselineAdjust(int stopPos, int *rChannel, int *lChannel) { // Use Welford's algorithm
+  for (int i = 0; i < stopPos; i++) { // 100 represents a 100-point moving average, taking one sample every 7*(30us) or so, every 210us or 4761Hz.
+    readMSGEQ7();                 // read the spectrum 100 times
+    for (band = 0; band < 7; band++) {  //and for each readout add the l/rChannel values up
+      lChannel[band] += ((left[band] - lChannel[band])/i);
+      rChannel[band] += ((right[band] - rChannel[band])/i);
+    }
+  }
+}  
 void readMSGEQ7() {
 // Function to read 7 band equalizers
   digitalWrite(res, HIGH);
@@ -35,8 +60,32 @@ void readMSGEQ7() {
     digitalWrite(strobe,HIGH);
   }
 }
+void readMSGEQ7c() {
+// Function to read 7 band equalizers (w/ baseline correction applied)
+  digitalWrite(res, HIGH);
+  digitalWrite(res, LOW);
+  for(band=0; band <7; band++) {
+    digitalWrite(strobe,LOW); // strobe pin on the shield - kicks the IC up to the next band
+    delayMicroseconds(30); //
+    left[band] = analogRead(0); // store left band reading
+    reduce(left[band], baselineL[band], 0); // baseline correction
+    right[band] = analogRead(1); // ... and the right
+    reduce(right[band], baselineR[band], 0); // baseline corection
+    digitalWrite(strobe,HIGH);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(res, OUTPUT); // reset
+  pinMode(strobe, OUTPUT); // strobe
+  digitalWrite(res,LOW); // reset low
+  digitalWrite(strobe,HIGH); //pin 5 is RESET on the shield
+  baselineAdjust(smoothP, baselineR, baselineL); // grab band-specific baseline adjustments (assumes no audio on initialization)
+}
+
 void loop() {
-  readMSGEQ7();
+  readMSGEQ7c();
   // display values of left channel on serial monitor
   for (band = 0; band < 7; band++) {
     Serial.print(left[band]);
@@ -50,5 +99,3 @@ void loop() {
   Serial.println();
   delay(1);
 }
-
-
