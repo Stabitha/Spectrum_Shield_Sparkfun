@@ -8,13 +8,15 @@
 // The fourteen values are seperated by commas and are terminated by a newline,
 // which is the format expected by the accompanying processing code.
 
+// Post-processing computes a running tally of the sample mean, variance, and standard deviation
+// To change the number of samples to average over, change `static const byte smothP` to the preferred value
+
 // MSGEQ7 Control
 int strobe = 4; // strobe pins on digital 4
 int res = 5; // reset pins on digital 5
 static const byte smoothP = 20;  // Number of samples to compute rolling average over (empirically set)
-int count = 0;
 
-int initRootR = 25;
+int initRootR = 25;    
 int initRootL = 25;
 int left[7]; // store band values in these arrays
 int right[7];
@@ -98,36 +100,32 @@ void readMSGEQ7() {
 }
 
 void baselineAdjust(int stopPos, int *rChannel, int *lChannel) { // Use Welford's algorithm
-  for (int i = 1; i <= stopPos; i++) { // 100 represents a 100-point moving average, taking one sample every 7*(30us) or so, every 210us or 4761Hz.
-    readMSGEQ7();                      // read the spectrum 100 times
-    for (band = 0; band < 7; band++) {  //and for each readout add the l/rChannel values up
-      bslL[band] = lChannel[band];
-      bslR[band] = rChannel[band];
-      lChannel[band] += ((left[band] - lChannel[band])/i);  // M_k = M_k-1 + (x_k - M_k-1)/k
-      rChannel[band] += ((right[band] - rChannel[band])/i); // Moving 'stopPos' average of left and right channels
-      if (i > 1) {
-        varianceL[band] += (((left[band] - bslL[band]) * (left[band] - lChannel[band]))/(i-1));  // Moving 'stopPos' variance of left and right channels
-        varianceR[band] += (((right[band] - bslR[band]) * (right[band] - rChannel[band]))/(i-1));
-      }
+  readMSGEQ7();                       // read all 7 bands for left and right channels
+  for (band = 0; band < 7; band++) {  // and for each band compute the running average and variance
+    bslL[band] = lChannel[band];  // stores M_old
+    bslR[band] = rChannel[band];
+    lChannel[band] += ((left[band] - lChannel[band])/stopPos);  // M_k = M_k-1 + (x_k - M_k-1)/k
+    rChannel[band] += ((right[band] - rChannel[band])/stopPos); // Moving 'stopPos' average of left and right channels
+    if (stopPos > 1) {
+      varianceL[band] += (((left[band] - bslL[band]) * (left[band] - lChannel[band]))/(stopPos-1));  // Moving 'stopPos' variance of left and right channels
+      varianceR[band] += (((right[band] - bslR[band]) * (right[band] - rChannel[band]))/(stopPos-1));
     }
   }
-  for (band = 0; band < 7; band++) {
+  for (band = 0; band < 7; band++) {    // for each band compute the standard deviation
     initRootL = initialRootValue(varianceL[band]);
     initRootR = initialRootValue(varianceR[band]);
-    // here I am giving the baseline correction as the standard deviation, but I want to use average for this
-    // then use standard deviation to limit the power spectrum that goes out for post-processing so it is not jittery
     stdDevLeft[band] = secantRoot(varianceL[band], lChannel[band], initRootL);   
     stdDevRight[band] = secantRoot(varianceR[band], rChannel[band], initRootR);  
   }
 }                           
 
-void readMSGEQ7c() {
+void readMSGEQ7c(int runningP) {
 // Function to apply baseline correction & clip power spectra to +/- 1s.d. from the average in any given burst of samples
-  baselineAdjust(smoothP, baselineRight, baselineLeft); //baselineAdjust() calls readMSGEQ7() and gets left[band]/right[band]
-  for(band=0; band <7; band++) {
+  baselineAdjust(runningP, baselineRight, baselineLeft); // baselineAdjust() calls readMSGEQ7() and gets left[band]/right[band]
+  for(band=0; band <7; band++) {                         // constrain each band in each channel to be no more than +/- 1s.d. from 20-sample mean
     right[band] = left[band]; // show uncorrected left band in the right-hand side
-    left[band] = max(left[band], baselineLeft[band]-stdDevLeft[band]);
-    left[band] = min(left[band], baselineLeft[band]+stdDevLeft[band]);
+    left[band] = max(left[band], baselineLeft[band]-(stdDevLeft[band]>>1));
+    left[band] = min(left[band], baselineLeft[band]+(stdDevLeft[band]>>1));
 //    reduce(left[band], baselineLeft[band], 0); // baseline correction (maybe don't do this since it mostly just removes the signal mean>>s.d.)
 //    right[band] = max(right[band], baselineRight[band]-stdDevRight[band]);
 //    right[band] = min(right[band], baselineRight[band]+stdDevRight[band]);
@@ -145,7 +143,8 @@ void setup() {
 }
 
 void loop() {
-  readMSGEQ7c();
+  readMSGEQ7c(smoothP);
+  
   // display values of left channel on serial monitor
   for (band = 0; band < 7; band++) {
     Serial.print(left[band]);
@@ -157,5 +156,6 @@ void loop() {
     Serial.print(",");
   }
   Serial.println();
-}
 
+  delay(1);
+}
