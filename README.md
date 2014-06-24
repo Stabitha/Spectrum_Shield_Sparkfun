@@ -3,6 +3,7 @@ Spectrum_Shield_Sparkfun
 
 #### **Code for Sparkfun's Arduino Audio Spectrum Shield in the style of a TNG [Okudagram](http://en.wikipedia.org/wiki/LCARS).**  
 Written using Arduino IDE v1.0.5 and Processing v2.0.3 on Nov 3rd, 2013.
+UPDATE: This repository was forked to provide slightly more developed code that outputs less jittery data from the Spectrum Shield suitable for direct visualization.
 
 ![Okudagram Spectrum Shield](http://i795.photobucket.com/albums/yy232/smolder_bucket/Sparkfun_Okudagram_Spectrum.png)
 
